@@ -1,0 +1,273 @@
+---
+title: "Forecasting Commercial and Industrial Loans"
+author: "Ethan Harper"
+output:
+  pdf_document: default
+  html_document: default
+---
+The primary data that will be forecasted is the Commercial and Industrial Loans from all commerical banks with the data taken from FRED.  The data is in terms of billion of US dollars.  The C&I loans can help give insight into the future strengh of the economy.  Business use these loans to invest in in short term projects.  A decrease in currect C&I loans can signal a slow down in furture production possibility.
+The second variable we will look at is retail sales (excl. motor vehicle and parts dealers) as recorded by the US census bureau. This data is presented in terms of millions of dollars.  Overall if retail sales are strong then business should feel encouraged to expand their business.  There are a few ways for business to gather the cash to expand and one of them is through loans.
+
+
+
+```{r, echo=FALSE, fig.width=6, fig.height=3}
+
+library(tstools)
+loan <-readRDS(file="loandata.rda")
+retail <- readRDS(file="retail.rda")
+data.raw <- read.csv("book1.csv", header=FALSE)
+dataset <- ts(data.raw, start=c(1992,1), frequency=12)
+colnames(dataset) <- c("Loans","Retail Sales")
+Lloan <- ts(data.raw[,1], start=c(1992,1), frequency=12)
+Lretail <- ts(data.raw[,2], start=c(1992,1), frequency=12)
+```
+
+
+
+
+```{r, echo= FALSE, fig.width=6, fig.height=3}
+plot(loan, plot.type="single", main="Commercial and Industrial Loans", xlab="", ylab="In Billions")
+```
+
+```{r, echo= FALSE, fig.width=6, fig.height=3}
+plot(retail[,2], plot.type="single", main="Retails Sales", xlab="", ylab="In Millions")
+
+```  
+      
+Firstly we will check that the lona data is stationary using the Dicky-Fuller tests   
+```{r, echo=FALSE,}
+library(urca)
+loan.df <- ur.df(y=loan, type="none")
+summary(loan.df)
+```
+Ho: r=0   
+Ho: relations = 0 5.2235 > -1.62(10pct)  
+Can not reject Ho  
+
+
+
+```{r, echo=FALSE}
+dloan <- log(loan) - log(lag(loan,12))
+dloan.df <- ur.df(y=dloan, type = "none")
+summary(dloan.df)
+```
+we can concluded that the loan data is stationary with 99% confidence only when you detrend the data.   
+Ho: r=0   
+Ho: relations = 0 -3.806< -2.58(1pct)  
+Reject Ho  
+
+```{r, echo=FALSE, results="hide"}
+drloan <-ur.df(y=loan, type ="drift")
+huh <-summary(drloan)
+huh
+```
+  
+Next we will look at the retail sales data.
+```{r, echo=FALSE,  }
+retail.df <- ur.df(y=retail[,2], type="none")
+summary(retail.df)
+```
+Ho: r=0  
+Ho: relations = 2.301 > -1.6 (10pct)  
+Can not reject Ho
+```{r , echo=FALSE}
+dretail <- log(retail[,2]) - log(lag(retail[,2],12))
+dretail.df <- ur.df(y=dretail, type="none")
+summary(dretail.df)
+```
+
+With the retail sales data we can concluded that it is stationary with 90% confidence when you detrend it.  -1.8328 < -1.6 (10pct)   
+Ho: r=0  
+Ho: relations = 0 -1.8328 < -1.6 (10pct)  
+Reject Ho  
+```{r, echo=FALSE,  results="hide"}
+
+drretail <- ur.df(y=retail[,2], type="drift")
+summary(drretail)
+
+```
+
+
+```{r, echo= FALSE, include= FALSE}
+
+vec <- ca.jo(dataset,ecdet="trend")
+summary(vec)
+
+
+vec1 <- ca.jo(dataset,ecdet="trend")
+summary(vec1)
+
+
+``` 
+```{r, echo=FALSE}
+summary(vec1)
+```
+Using the Johansene test we can conclude with 99% confidence that there is cointegration with a linear trend between the Commercial and Industrial Loans and Retail sales data.  
+Ho: not cointegrated  
+Ho: relations = 0 26.87 > 23.65
+Reject Ho  
+Zt= Loans + .0385Retail.sales +-30.1297Trend
+
+
+
+
+Using the stepwise function we will selection only a time trend component.
+```{r, echo=FALSE}
+trend <- make.trend(loan)
+dum <- month.dummy(loan)
+predictors <- ts.intersect(trend, dum)
+colnames(predictors) <- c("trend", "Jan", "Fed", "Mar", "Apr", "May", "June", "July", "Aug", "Sep", "Oct", "Nov","Dec")
+huh <-stepwise.selection(loan, predictors, BIC)
+fit1 <- tsreg(loan, trend)
+huh
+
+
+```
+
+
+```{r, echo= FALSE, results="hide", include=FALSE}
+library(forecast)
+loan.filtered <- fit1$resids
+model <- auto.arima(loan.filtered, d=0, D=0, max.P=0, max.Q=0, max.q =12, max.p =12)
+
+forecast <- predict(model, 12)
+
+```
+    
+After filtered the data and using the ARIMA lags (2,0,4) we end with this model:  
+Y=1.9395y-1 + -0.9400y-2 + -0.4824e-1 +-0.1759e-2+0.1294e-3+ 0.0733e-4
+```{r, echo=FALSE}
+model
+
+```
+
+Using the ARIMA model these are the filtered forecasts for the next 12 months
+
+```{r, echo=FALSE}
+forecast$pred
+
+
+
+```
+
+The filtered forecasts with trend added back in.
+```{r,echo=FALSE}
+loanf <-  forecast$pred + -326.171 + 2.017* c((length(loan)+1): (length(loan)+12) )
+loanf
+
+```
+\pagebreak
+Plot of final ARIMA based forecast with 50% forcast intervals
+
+```{r, echo=FALSE}
+loanfub  <- loanf +  0.67*forecast$se
+
+loanflb <- loanf -  0.67*forecast$se
+
+forecast.info <- ts.intersect(loanflb, loanf, loanfub)
+actual.sales <- tsextend(window(loan, start=c(2015,10)), 2105.619 )
+full.data <- cbind(actual.sales, forecast.info)
+label.dates <- time(forecast.info) + .1
+label.names <- c("Nov 16", "", "Jan 17", "", "Mar 17", "", "May 17", "", "July 17", "", "Sep 17","")
+label.dates2 <- time(actual.sales)
+label.names2 <- c("Oct 15", "", "Dec 15", "", "Jan 16", "", "Mar 16", "", "May 16", "", "July 16", "","Sep 16", "")
+plot(full.data, plot.type="single", main="Commercial and Industrial Loans ", xlab="", ylab="Thousands of Dollars",xaxt="n", lty=c("solid","dashed","longdash","dashed"))
+axis(1, at=label.dates, labels=label.names, las =2)
+axis(1, at=label.dates2, labels=label.names2, las =2)
+```
+
+
+
+Next will be be forecasting using Vars
+
+```{r, echo = FALSE, include =FALSE}
+library(vars)
+
+```
+
+```{r, echo= FALSE}
+
+
+VARselect(dataset)$selection
+```
+We will be using the AIC of 7 as the max lag length.  
+Var forecast of loan data over the next year 50% confidence intervals
+```{r, echo=FALSE}
+colnames(dataset) <- c("Loans","Retail Sales")
+fit <-VAR(dataset, type="both", lag.max=7, ic="AIC")
+predict(fit, n.ahead=12, ci=.5)$fcst$Loan
+
+```
+Var forecast of Retail Sales over the next year with 50% confidence intervals
+```{r, echo= FALSE}
+predict(fit, n.ahead=12, ci=.5)$fcst$Retail.Sales
+fit
+```
+
+Scenario analysis with 2% increase in Retails each month for 7 months
+```{r, echo= FALSE}
+
+
+
+SA1 <- 1.3483423385*data.raw[298,1] +  0.0002515504*data.raw[298,2] + -0.3198919788*data.raw[297,1]  +-0.0002800659*data.raw[297,2] + 0.1936788831*data.raw[296,1]  +  0.0005660766*data.raw[296,2] + -0.1141049021*data.raw[295,1] + 0.0003414368*data.raw[295,2] + -0.0892869915*data.raw[294,1] + -0.0004584976*data.raw[294,2]  +  0.1241017731*data.raw[293,1]  + -0.0002303811*data.raw[293,2] +  -0.1486726970*data.raw[292,1] + -0.0001963394*data.raw[292,2] +  2.0723837768  +  0.0321259255*(length(loan)+1) 
+
+ 
+SA2 <- 1.3483423385*SA1 +  0.0002515504*(1.02*data.raw[298,2]) + -0.3198919788*data.raw[298,1]  +-0.0002800659*data.raw[298,2] + 0.1936788831*data.raw[297,1]  +  0.0005660766*data.raw[297,2] + -0.1141049021*data.raw[296,1] + 0.0003414368*data.raw[296,2] + -0.0892869915*data.raw[295,1] + -0.0004584976*data.raw[295,2]  +  0.1241017731*data.raw[294,1]  + -0.0002303811*data.raw[294,2] +  -0.1486726970*data.raw[293,1] + -0.0001963394*data.raw[293,2] +  2.0723837768  +  0.0321259255*(length(loan)+2) 
+
+SA3 <- 1.3483423385*SA2 +  0.0002515504*(1.04*data.raw[298,2]) + -0.3198919788*SA1  +-0.0002800659*(1.02*data.raw[298,2]) + 0.1936788831*data.raw[298,1]  +  0.0005660766*data.raw[298,2] + -0.1141049021*data.raw[297,1] + 0.0003414368*data.raw[297,2] + -0.0892869915*data.raw[296,1] + -0.0004584976*data.raw[296,2]  +  0.1241017731*data.raw[295,1]  + -0.0002303811*data.raw[295,2] +  -0.1486726970*data.raw[294,1] + -0.0001963394*data.raw[294,2] +  2.0723837768  +  0.0321259255*(length(loan)+3) 
+
+SA4 <- 1.3483423385*SA3 +  0.0002515504*(1.06*data.raw[298,2]) + -0.3198919788*SA2  +-0.0002800659*(1.04*data.raw[298,2]) + 0.1936788831*SA1  +  0.0005660766*(1.02*data.raw[298,2]) + -0.1141049021*data.raw[298,1] + 0.0003414368*data.raw[298,2] + -0.0892869915*data.raw[297,1] + -0.0004584976*data.raw[297,2]  +  0.1241017731*data.raw[296,1]  + -0.0002303811*data.raw[296,2] +  -0.1486726970*data.raw[295,1] + -0.0001963394*data.raw[295,2] +  2.0723837768  +  0.0321259255*(length(loan)+4) 
+
+SA5 <- 1.3483423385*SA4 +  0.0002515504*(1.08*data.raw[298,2]) + -0.3198919788*SA3  +-0.0002800659*(1.06*data.raw[298,2]) + 0.1936788831*SA2  +  0.0005660766*(1.04*data.raw[298,2]) + -0.1141049021*SA1 + 0.0003414368*(1.02*data.raw[298,2]) + -0.0892869915*data.raw[298,1] + -0.0004584976*data.raw[298,2]  +  0.1241017731*data.raw[297,1]  + -0.0002303811*data.raw[297,2] +  -0.1486726970*data.raw[296,1] + -0.0001963394*data.raw[296,2] +  2.0723837768  +  0.0321259255*(length(loan)+5)
+
+SA6 <- 1.3483423385*SA5 +  0.0002515504*(1.1*data.raw[298,2]) + -0.3198919788*SA4  +-0.0002800659*(1.08*data.raw[298,2]) + 0.1936788831*SA3  +  0.0005660766*(1.06*data.raw[298,2]) + -0.1141049021*SA2 + 0.0003414368*(1.04*data.raw[298,2]) + -0.0892869915*SA1 + -0.0004584976*(1.02*data.raw[298,2])  +  0.1241017731*data.raw[298,1]  + -0.0002303811*data.raw[298,2] +  -0.1486726970*data.raw[297,1] + -0.0001963394*data.raw[297,2] +  2.0723837768  +  0.0321259255*(length(loan)+6) 
+
+SA7 <- 1.3483423385*SA6 +  0.0002515504*(1.12*data.raw[298,2]) + -0.3198919788*SA5  +-0.0002800659*(1.1*data.raw[298,2]) + 0.1936788831*SA4  +  0.0005660766*(1.08*data.raw[298,2]) + -0.1141049021*SA3 + 0.0003414368*(1.06*data.raw[298,2]) + -0.0892869915*SA2 + -0.0004584976*(1.04*data.raw[298,2])  +  0.1241017731*SA1  + -0.0002303811*(1.02*data.raw[298,2]) +  -0.1486726970*data.raw[298,1] + -0.0001963394*data.raw[298,2] +  2.0723837768  +  0.0321259255*(length(loan)+7) 
+
+pre <-c(SA1, SA2, SA3, SA4, SA5, SA6, SA7)
+pre
+```
+Scenario analysis with no change in monthly retail sales for 7 months  
+```{r, echo= FALSE}
+
+SA11 <- 1.3483423385*data.raw[298,1] +  0.0002515504*data.raw[298,2] + -0.3198919788*data.raw[297,1]  +-0.0002800659*data.raw[297,2] + 0.1936788831*data.raw[296,1]  +  0.0005660766*data.raw[296,2] + -0.1141049021*data.raw[295,1] + 0.0003414368*data.raw[295,2] + -0.0892869915*data.raw[294,1] + -0.0004584976*data.raw[294,2]  +  0.1241017731*data.raw[293,1]  + -0.0002303811*data.raw[293,2] +  -0.1486726970*data.raw[292,1] + -0.0001963394*data.raw[292,2] +  2.0723837768  +  0.0321259255*(length(loan)+1) 
+
+ 
+SA21 <- 1.3483423385*SA11 +  0.0002515504*(data.raw[298,2]) + -0.3198919788*data.raw[298,1]  +-0.0002800659*data.raw[298,2] + 0.1936788831*data.raw[297,1]  +  0.0005660766*data.raw[297,2] + -0.1141049021*data.raw[296,1] + 0.0003414368*data.raw[296,2] + -0.0892869915*data.raw[295,1] + -0.0004584976*data.raw[295,2]  +  0.1241017731*data.raw[294,1]  + -0.0002303811*data.raw[294,2] +  -0.1486726970*data.raw[293,1] + -0.0001963394*data.raw[293,2] +  2.0723837768  +  0.0321259255*(length(loan)+2)
+
+SA31 <- 1.3483423385*SA21 +  0.0002515504*(data.raw[298,2]) + -0.3198919788*SA11  +-0.0002800659*(data.raw[298,2]) + 0.1936788831*data.raw[298,1]  +  0.0005660766*data.raw[298,2] + -0.1141049021*data.raw[297,1] + 0.0003414368*data.raw[297,2] + -0.0892869915*data.raw[296,1] + -0.0004584976*data.raw[296,2]  +  0.1241017731*data.raw[295,1]  + -0.0002303811*data.raw[295,2] +  -0.1486726970*data.raw[294,1] + -0.0001963394*data.raw[294,2] +  2.0723837768  +  0.0321259255*(length(loan)+3) 
+
+SA41 <- 1.3483423385*SA31 +  0.0002515504*(data.raw[298,2]) + -0.3198919788*SA21  +-0.0002800659*(data.raw[298,2]) + 0.1936788831*SA11  +  0.0005660766*(data.raw[298,2]) + -0.1141049021*data.raw[298,1] + 0.0003414368*data.raw[298,2] + -0.0892869915*data.raw[297,1] + -0.0004584976*data.raw[297,2]  +  0.1241017731*data.raw[296,1]  + -0.0002303811*data.raw[296,2] +  -0.1486726970*data.raw[295,1] + -0.0001963394*data.raw[295,2] +  2.0723837768  +  0.0321259255*(length(loan)+4) 
+
+SA51 <- 1.3483423385*SA41 +  0.0002515504*(data.raw[298,2]) + -0.3198919788*SA31  +-0.0002800659*(data.raw[298,2]) + 0.1936788831*SA21  +  0.0005660766*(data.raw[298,2]) + -0.1141049021*SA11 + 0.0003414368*(data.raw[298,2]) + -0.0892869915*data.raw[298,1] + -0.0004584976*data.raw[298,2]  +  0.1241017731*data.raw[297,1]  + -0.0002303811*data.raw[297,2] +  -0.1486726970*data.raw[296,1] + -0.0001963394*data.raw[296,2] +  2.0723837768  +  0.0321259255*(length(loan)+5)
+
+SA61 <- 1.3483423385*SA51 +  0.0002515504*(data.raw[298,2]) + -0.3198919788*SA41  +-0.0002800659*(data.raw[298,2]) + 0.1936788831*SA31  +  0.0005660766*(data.raw[298,2]) + -0.1141049021*SA21 + 0.0003414368*(data.raw[298,2]) + -0.0892869915*SA11 + -0.0004584976*(data.raw[298,2])  +  0.1241017731*data.raw[298,1]  + -0.0002303811*data.raw[298,2] +  -0.1486726970*data.raw[297,1] + -0.0001963394*data.raw[297,2] +  2.0723837768  +  0.0321259255*(length(loan)+6) 
+
+SA71 <- 1.3483423385*SA61 +  0.0002515504*(data.raw[298,2]) + -0.3198919788*SA51  +-0.0002800659*(data.raw[298,2]) + 0.1936788831*SA41  +  0.0005660766*(data.raw[298,2]) + -0.1141049021*SA31 + 0.0003414368*(data.raw[298,2]) + -0.0892869915*SA21 + -0.0004584976*(data.raw[298,2])  +  0.1241017731*SA11  + -0.0002303811*(data.raw[298,2]) +  -0.1486726970*data.raw[298,1] + -0.0001963394*data.raw[298,2] +  2.0723837768  +  0.0321259255*(length(loan)+7) 
+
+
+pre2 <-c(SA11, SA21, SA31, SA41, SA51, SA61, SA71)
+pre2
+```
+
+\pagebreak
+
+
+Plot comparing No growth in sales(solid line) vs 2% month growth in sales 
+
+```{r, echo=FALSE}
+pre21 <-ts(pre2, start=c(2016,10), frequency = 12)
+pre1 <-ts(pre, start=c(2016,10), frequency = 12)
+
+SAforecast<- ts.intersect(pre21, pre1)
+label.dates <- time(SAforecast) + .1
+label.names1 <- c("Nov 16", "Dec 16", "Jan 17", "Feb 17", "Mar 17", "Apr 17", "May 17")
+plot(SAforecast, plot.type="single", main="Scenario analysis ", xlab="", ylab="Thousands of Dollars",xaxt="n", lty=c("solid","dashed"))
+axis(1, at=label.dates, labels=label.names1, las =2)  
+```
+   
+
+
+
+
+
