@@ -5,7 +5,7 @@ output:
   pdf_document: default
   html_document: default
 ---
-The primary data that will be forecasted is the Commercial and Industrial Loans from all commerical banks with the data taken from FRED.  The data is in terms of billion of US dollars.  The C&I loans can help give insight into the future strengh of the economy.  Business use these loans to invest in in short term projects.  A decrease in currect C&I loans can signal a slow down in furture production possibility.
+The primary data that will be forecasted is the Commercial and Industrial Loans from all commercial banks with the data taken from FRED.  The data is in terms of billion of US dollars.  The C&I loans can help give insight into the future strengh of the economy.  Business use these loans to invest in in short term projects.  A decrease in currect C&I loans can signal a slow down in furture production possibility.
 The second variable we will look at is retail sales (excl. motor vehicle and parts dealers) as recorded by the US census bureau. This data is presented in terms of millions of dollars.  Overall if retail sales are strong then business should feel encouraged to expand their business.  There are a few ways for business to gather the cash to expand and one of them is through loans.
 
 
@@ -34,7 +34,7 @@ plot(retail[,2], plot.type="single", main="Retails Sales", xlab="", ylab="In Mil
 
 ```  
       
-Firstly we will check that the lona data is stationary using the Dicky-Fuller tests   
+Firstly we will check that the loan data is stationary using the Dicky-Fuller tests   
 ```{r, echo=FALSE,}
 library(urca)
 loan.df <- ur.df(y=loan, type="none")
